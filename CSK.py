@@ -16,7 +16,7 @@ print(xy)
 # Plotting the *CIE 1931 Chromaticity Diagram*.
 # The argument *show=False* is passed so that the plot doesn't get
 # displayed and can be used as a basis for other plots.
-plot_chromaticity_diagram_CIE1931(show=False)
+plot_chromaticity_diagram_CIE1976UCS(show=False)
 
 # Plotting the *xy* chromaticity coordinates.
 x, y = xy

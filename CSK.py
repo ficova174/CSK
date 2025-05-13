@@ -23,7 +23,7 @@ def XYZ_to_uv(XYZ:list) -> list:
 
 def uv_to_XYZ(uv:list) -> list:
     denominateur = 6*uv[0] - 16*uv[1] + 12
-    return [9*uv[0]/denominateur, 4*uv[]]
+    return [9*uv[0]/denominateur, 4*uv[1]]
 
 
 # Plotting the *CIE 1976 Chromaticity Diagram*.

@@ -2,6 +2,8 @@ from csk import *
 import matplotlib.pyplot as plt
 import pycanum.main as pycan
 
+creationDiagrammeCIE1931()
+
 sys = pycan.Sysam("SP5")
 
 # PARAMETRES EMISSION

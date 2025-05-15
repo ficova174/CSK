@@ -81,54 +81,100 @@ def codageManchester(messageBin:str) -> str:
                 messageMan += "0"
     return messageMan
 
-def positionsDiagramme(messageMan:str, pointsDiag:dict) -> list:
+def creationCodagePoints(primariesColorsxy:dict, nombreSubdivisions:int):
     """
-    pointDiag["00"] = np.array([[x], [y]]) red
+    on pose 2 couleurs primaires sur le diagramme puis on met des points équidistants sur la droite les rejoignant
+    x = (G*primary_green_x + B*primary_blue_x)/(G + B)
+    y = (G*primary_green_y + B*primary_blue_y)/(G + B)
+    c'est linéaire
+    G, B entre 0.0 et 1.0
+    primariesColorsxy["red"] = [x,
+                                y]
+    np array
+    
+    ointDiag["00"] = np.array([[x], [y]]) red
     pointDiag["01"] = np.array([[x], [y]])
     ...
     pointDiag["11"] = np.array([[x], [y]]) blue
     """
-    messageChromacity = np.zeros((2, len(messageMan)/2))
+    distanceCouleursPrimaires = primariesColorsxy["red"]-primariesColorsxy["blue"]
+    listePointsxy = np.zeros((2, nombreSubdivisions))
+    listePointsxy[:, 0] = primariesColorsxy["blue"]
+    listePointsxy[:, nombreSubdivisions] = primariesColorsxy["red"]
+    for point in range(1, nombreSubdivisions-1):
+        listePointsxy[:, point] = primariesColorsxy["blue"] + point*distanceCouleursPrimaires
+    
+    pointsDiagramme = {}
+    for valeur in range(nombreSubdivisions):
+        pointsDiagramme[codageBinaire(valeur, 2)] = listePointsxy # codage binaire à l'envers = problème ?
+
+    return np.round(pointsDiagramme, 2)
+
+def positionsDiagramme(messageMan:str, pointsDiagramme:dict) -> list:
+    """
+    """
+    messagexy = np.zeros((2, len(messageMan)/2))
     indice = 0
     for k in range(0, len(messageMan)-2, 2):
-        chromacity = pointsDiag[messageMan[k:k+2]]
-        if chromacity >= 0 and chromacity <= 4:
-            messageChromacity[:, indice] = chromacity
-        else:
-            print("couleur incorrecte")
+        chromacity = pointsDiagramme[messageMan[k:k+2]]
+        messagexy[:, indice] = chromacity
         indice += 1
-    if len(messageChromacity) == (len(messageMan)/2):
-        return messageChromacity
-    else:
-        print("len(messageChromacity) != (len(messageMan)/2)")
+    if messagexy.shape[1] == len(messageMan)/2:
+        return messagexy
+    print("messageChromacity.shape[1] == len(messageMan)/2")
 
-def xyY_to_XYZ(xy:list, Y:list):
-    x = xy[0]
-    y = xy[1]
-    return [Y*x/y, Y, (1-x-y)*Y/y]
+def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir expérimentalement et en fonction du RGB obtenu
+    messageXYZ = np.zeros((3, len(messagexy)))
+    for indice in range(messagexy.shape[1]):
+        x = messagexy[0, indice]
+        y = messagexy[1, indice]
+        messageXYZ[0, ] = Y*x/y
+        messageXYZ[1, ] = Y
+        messageXYZ[2, ] = (1-x-y)*Y/y
+    return messageXYZ
 
-def XYZ_to_RGB(): # RGB = voltage entre 0 et 10 V
+def XYZ_to_RB(): # R, G, B = scalaire entre 0.0 et 1.0
+    pass
 
-def csk(messageMan:str, tensionMin:int, tensionMax:int, N:int) -> list:
+def csk(messageMan:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int) -> list:
     """
     transforme le message en chromacité en valeurs de tension pour les LEDS
     on utilise la modulation colors shifting keying (CSK)
     """
-    tension = np.zeros((2, len(messageMan)/2))
-    for bit in messageMan:
-        if bit == '0':
-            tension += [tensionMin]*N
-        elif bit == '1':
-            tension += [tensionMax]*N
-        else:
-            print('Erreur : le message binaire est corrompu, une valeur autre que 0 et 1 a été trouver')
-            return []
-    return np.array(tension, dtype=np.float32)
 
-def emission(message:str, tensionMin:int, tensionMax:int, N:int, startMan:str, endMan:str) -> list:
+
+    primariesColorsxy = {}
+
+
+    dicoPointsPrimaires = creationCodagePoints(primariesColorsxy, nombreSubdivisions)
+    messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
+    messageXYZ = xyY_to_XYZ(messagexy, Y)
+    messageRGB = XYZ_to_RB(messageXYZ) # tableau numpy 2 lignes len(messageXYZ) colonnes
+
+    tension = np.zeros((2, messageRGB.shape[1])) # RB
+    for indice in range(messageRGB.shape[1]):
+        tension[0, indice] = tensionMin - messageRGB[0, indice]*(tensionMin - tensionMax)
+        tension[1, indice] = tensionMin - messageRGB[1, indice]*(tensionMin - tensionMax)
+
+        if tension[0, indice] < float(tensionMin):
+            tension[0, indice] = float(tensionMin)
+            print("valeur de tension inférieure à tensionMin V")
+        elif tension[0, indice] > float(tensionMax):
+            tension[0, indice] = float(tensionMax)
+            print("valeur de tension supérieure à tensionMax V")
+
+    np.round(tension, 2)
+    tensionEchantillonnee = np.zeros((2, tension.shape[1]), dtype=np.float32)
+
+    for indice in range(tension.shape[1]):
+        for k in range(N):
+            tensionEchantillonnee[0, k + N*indice] = tension[0, indice]
+
+    return tensionEchantillonnee
+
+def emission(message:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
     messageMan = startMan + codageManchester(encodage(message, 8)) + endMan # accroches ajoutées au message
-    messageChromacity = positionsDiagramme(messageMan, pointsDiag)
-    return csk(messageChromacity, tensionMin, tensionMax, N)
+    return csk(messageMan, nombreSubdivisions, tensionMin, tensionMax, N, Y)
 
 
 # Partie réception

@@ -12,11 +12,12 @@ techantSortie = 1e-3 # période d'échantillonnage en secondes
 temissionBit = 1e-2
 N = int(temissionBit/techantSortie) # nombre de points représentant 1 bit
 (tensionMin, tensionMax) = (0, 5)
+nombreSubdivisions = 4
 # message = input("Message à envoyer : ")
 message = 'jellooo'
 startMan = codageManchester(creationAccroche('a'))
 endMan = codageManchester(creationAccroche('z'))
-signal = emission(message, tensionMin, tensionMax, N, startMan, endMan)
+signal = emission(message, nombreSubdivisions, tensionMin, tensionMax, N, 1, startMan, endMan)
 
 sys.config_sortie(1, techantSortie*1e6, signal[0])
 sys.config_sortie(2, techantSortie*1e6, signal[1]) # en microsecondes et non périodique
@@ -45,7 +46,6 @@ sys.stopper_sorties(1, 1)
 temps = sys.temps()
 tensions = sys.entrees()
 sys.fermer()
-
 
 # Résultats
 

@@ -98,10 +98,10 @@ def creationCodagePoints(primariesColorsxy:dict, nombreSubdivisions:int):
     pointDiag["11"] = np.array([[x], [y]]) blue
     """
     distanceCouleursPrimaires = primariesColorsxy["red"]-primariesColorsxy["blue"]
-    listePointsxy = np.zeros((2, nombreSubdivisions))
+    listePointsxy = np.zeros((2, nombreSubdivisions+1))
     listePointsxy[:, 0] = primariesColorsxy["blue"]
-    listePointsxy[:, nombreSubdivisions] = primariesColorsxy["red"]
-    for point in range(1, nombreSubdivisions-1):
+    listePointsxy[:, nombreSubdivisions+1] = primariesColorsxy["red"]
+    for point in range(1, nombreSubdivisions):
         listePointsxy[:, point] = primariesColorsxy["blue"] + point*distanceCouleursPrimaires
     
     pointsDiagramme = {}
@@ -116,15 +116,14 @@ def positionsDiagramme(messageMan:str, pointsDiagramme:dict) -> list:
     messagexy = np.zeros((2, len(messageMan)/2))
     indice = 0
     for k in range(0, len(messageMan)-2, 2):
-        chromacity = pointsDiagramme[messageMan[k:k+2]]
-        messagexy[:, indice] = chromacity
+        messagexy[:, indice] = pointsDiagramme[messageMan[k:k+2]]
         indice += 1
     if messagexy.shape[1] == len(messageMan)/2:
         return messagexy
     print("messageChromacity.shape[1] == len(messageMan)/2")
 
 def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir expérimentalement et en fonction du RGB obtenu
-    messageXYZ = np.zeros((3, len(messagexy)))
+    messageXYZ = np.zeros((3, messagexy.shape[1]))
     for indice in range(messagexy.shape[1]):
         x = messagexy[0, indice]
         y = messagexy[1, indice]
@@ -134,7 +133,10 @@ def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir 
     return messageXYZ
 
 def XYZ_to_RB(): # R, G, B = scalaire entre 0.0 et 1.0
-    pass
+    # On veut la ligne du milieu 0 pour avoir G = 0
+    M = np.ones((3, 3))
+    M[1, :] = 0
+    return M
 
 def csk(messageMan:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int) -> list:
     """
@@ -149,28 +151,23 @@ def csk(messageMan:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, 
     dicoPointsPrimaires = creationCodagePoints(primariesColorsxy, nombreSubdivisions)
     messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
     messageXYZ = xyY_to_XYZ(messagexy, Y)
-    messageRGB = XYZ_to_RB(messageXYZ) # tableau numpy 2 lignes len(messageXYZ) colonnes
+    messageRGB = XYZ_to_RB(messageXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
 
-    tension = np.zeros((2, messageRGB.shape[1])) # RB
+    tension = np.zeros((3, messageRGB.shape[1]), dtype=np.float32)
     for indice in range(messageRGB.shape[1]):
         tension[0, indice] = tensionMin - messageRGB[0, indice]*(tensionMin - tensionMax)
-        tension[1, indice] = tensionMin - messageRGB[1, indice]*(tensionMin - tensionMax)
+        tension[2, indice] = tensionMin - messageRGB[1, indice]*(tensionMin - tensionMax)
 
-        if tension[0, indice] < float(tensionMin):
-            tension[0, indice] = float(tensionMin)
-            print("valeur de tension inférieure à tensionMin V")
-        elif tension[0, indice] > float(tensionMax):
-            tension[0, indice] = float(tensionMax)
-            print("valeur de tension supérieure à tensionMax V")
-
+        for k in range(3):
+            if tension[k, indice] < float(tensionMin):
+                tension[k, indice] = float(tensionMin)
+                print("valeur de tension inférieure à tensionMin V")
+            elif tension[k, indice] > float(tensionMax):
+                tension[k, indice] = float(tensionMax)
+                print("valeur de tension supérieure à tensionMax V")
     np.round(tension, 2)
-    tensionEchantillonnee = np.zeros((2, tension.shape[1]), dtype=np.float32)
 
-    for indice in range(tension.shape[1]):
-        for k in range(N):
-            tensionEchantillonnee[0, k + N*indice] = tension[0, indice]
-
-    return tensionEchantillonnee
+    return np.repeat(tension, repeat=N, axis=1) # chaque colonne est dupliqué N fois
 
 def emission(message:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
     messageMan = startMan + codageManchester(encodage(message, 8)) + endMan # accroches ajoutées au message

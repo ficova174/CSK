@@ -26,6 +26,7 @@ sys.declencher_sorties(0, 1)
 
 # PARAMETRES RECEPTION
 
+# TECHANTENTREE < TECHANTSORTIE sinon on va mesurer des couleurs intermédiaire !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 techantEntree = 1e-3 # période d'échantillonnage en secondes
 tempsReception = 5 # en secondes
 nbpoints = int(tempsReception/techantEntree)

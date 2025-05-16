@@ -3,9 +3,11 @@
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import pycanum.main as pycan
 from colour.plotting import *
 
 matplotlib.use("Qt5Agg")
+sys = pycan.Sysam("SP5")
 
 # Création du diagramme et affichage des points (gamut)
 
@@ -81,28 +83,41 @@ def codageManchester(messageBin:str) -> str:
                 messageMan += "0"
     return messageMan
 
-def creationCodagePoints(primariesColorsxy:dict, nombreSubdivisions:int):
+def creationPointsPrimaires(couleurs:list):
+    """
+    on suppose que le spectre de la distribution de puissance des couleurs primaires possède un pic au niveau
+    de leur longueur d'onde dominante, on néglige le reste
+    donc X = x(lambda) ...
+    """
+    couleursPrimairesxy = {}
+    for couleurPrimaire in couleurs:
+        if couleurPrimaire == "red":
+            couleurPrimaireXYZ = [jkdsf, jksldf, shjldfhk]
+            couleursPrimairesxy[couleursPrimairesxy] = []
+
+
+def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
     """
     on pose 2 couleurs primaires sur le diagramme puis on met des points équidistants sur la droite les rejoignant
     x = (G*primary_green_x + B*primary_blue_x)/(G + B)
     y = (G*primary_green_y + B*primary_blue_y)/(G + B)
     c'est linéaire
     G, B entre 0.0 et 1.0
-    primariesColorsxy["red"] = [x,
+    couleursPrimairesxy["red"] = [x,
                                 y]
     np array
     
-    ointDiag["00"] = np.array([[x], [y]]) red
+    pointDiag["00"] = np.array([[x], [y]]) red
     pointDiag["01"] = np.array([[x], [y]])
     ...
     pointDiag["11"] = np.array([[x], [y]]) blue
     """
-    distanceCouleursPrimaires = primariesColorsxy["red"]-primariesColorsxy["blue"]
+    distanceCouleursPrimaires = couleursPrimairesxy["red"]-couleursPrimairesxy["blue"]
     listePointsxy = np.zeros((2, nombreSubdivisions+1))
-    listePointsxy[:, 0] = primariesColorsxy["blue"]
-    listePointsxy[:, nombreSubdivisions+1] = primariesColorsxy["red"]
+    listePointsxy[:, 0] = couleursPrimairesxy["blue"]
+    listePointsxy[:, nombreSubdivisions+1] = couleursPrimairesxy["red"]
     for point in range(1, nombreSubdivisions):
-        listePointsxy[:, point] = primariesColorsxy["blue"] + point*distanceCouleursPrimaires
+        listePointsxy[:, point] = couleursPrimairesxy["blue"] + point*distanceCouleursPrimaires
     
     pointsDiagramme = {}
     for valeur in range(nombreSubdivisions):
@@ -145,10 +160,11 @@ def csk(messageMan:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, 
     """
 
 
-    primariesColorsxy = {}
+    couleursPrimairesxy = {}
 
 
-    dicoPointsPrimaires = creationCodagePoints(primariesColorsxy, nombreSubdivisions)
+    couleursPrimairesxy = creationPointsPrimaires()
+    dicoPointsPrimaires = creationCodagePoints(couleursPrimairesxy, nombreSubdivisions)
     messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
     messageXYZ = xyY_to_XYZ(messagexy, Y)
     messageRGB = XYZ_to_RB(messageXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
@@ -175,4 +191,49 @@ def emission(message:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int
 
 
 # Partie réception
-# ATTENTION le message sera à l'envers car les infos envoyées en premières seront reçues en première
+
+def calibragePrimaires(tensionMax:float) -> list:
+    """
+    A chaque couleur primaire on attribue les valeurs des photodiodes
+    tensionsCouleurs : chaque ligne = couleur, colonnes = LED rouge, LED verte, LED bleu
+    """
+    techantSortie = 1e-3 # période d'échantillonnage en secondes
+    temissionBit = 1e-2
+    N = int(temissionBit/techantSortie)
+
+    tensionsCouleurs = np.identity(3)*tensionMax
+    tensionsEmission = np.repeat(tensionsCouleurs, repeats=N, axis=1) # axis = colonnes
+    tensionsReceptionMoy = np.zeros((3, 3))
+
+    for couleur in tensionsEmission:
+        sys.config_sortie(1, techantSortie*1e6, couleur) # en microsecondes et non périodique
+        sys.declencher_sorties(1, 0)
+
+        # TECHANTENTREE < TECHANTSORTIE sinon on va mesurer des couleurs intermédiaire !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        techantEntree = 1e-3 # période d'échantillonnage en secondes
+        tempsReception = 2 # en secondes
+        nbpoints = int(tempsReception/techantEntree)
+        N_reception = int(temissionBit/techantEntree)
+        
+        sys.config_entrees([1, 2, 3], [10]) # attention 10 V max
+        sys.config_echantillon(techantEntree*1e6, nbpoints) # période d'échantillonnage en microsecondes
+        sys.config_quantification(12)
+
+        # Emission/acquisition
+
+        sys.acquerir()
+        sys.declencher_sorties(1, 0)
+        sys.stopper_sorties(1, 0)
+
+        # Ce que l'on reçoit
+        tensions = sys.entrees()
+        sys.fermer()
+
+        # tensions = [liste_entrée1, liste_entrée2, liste_entrée3]
+        ...
+
+    # tensionsCouleurs = M * tensionsReceptionMoy
+    # M = tensionsCouleurs * (tensionsReceptionMoy)^-1
+    M = tensionsCouleurs @ np.linalg.inv(tensionsReceptionMoy)
+
+    return M

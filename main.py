@@ -2,22 +2,24 @@ from csk import *
 import matplotlib.pyplot as plt
 import pycanum.main as pycan
 
-creationDiagrammeCIE1931()
-
 sys = pycan.Sysam("SP5")
 
 # PARAMETRES EMISSION
 
+couleursPrimairesXYZ = {"red":[0.794186, 0.3447768, 0.00013596], # liste X = x(lambda), Y = y(lambda)...  lambda = 623 nm
+                        "green":[0.08973996, 0.7619694, 0.06456784], # lambda = 523 nm
+                        "blue":[0.2184072, 0.0836668, 1.3898799]} # lambda = 468 nm
+
 techantSortie = 1e-3 # période d'échantillonnage en secondes
 temissionBit = 1e-2
 N = int(temissionBit/techantSortie) # nombre de points représentant 1 bit
-(tensionMin, tensionMax) = (0, 5)
+tensionMax = 5
 nombreSubdivisions = 4
 # message = input("Message à envoyer : ")
 message = 'jellooo'
 startMan = codageManchester(creationAccroche('a'))
 endMan = codageManchester(creationAccroche('z'))
-signal = emission(message, nombreSubdivisions, tensionMin, tensionMax, N, 1, startMan, endMan)
+signal = emission(message, nombreSubdivisions, tensionMax, N, 1, startMan, endMan)
 
 sys.config_sortie(1, techantSortie*1e6, signal[0])
 sys.config_sortie(2, techantSortie*1e6, signal[2]) # en microsecondes et non périodique

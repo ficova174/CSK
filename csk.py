@@ -18,8 +18,7 @@ def creationDiagrammeCIE1931(listePositions:list):
     plot_chromaticity_diagram_CIE1931(show=False)
 
     # Plotting  chromaticity coordinates.
-    for point in range(len(listePositions)):
-        plt.plot(listePositions[point][0], listePositions[point][1], 'o-', color='black')
+    plt.plot(listePositions[0], listePositions[1], 'o-', color='black')
 
     # Displaying the plot.
     render(
@@ -28,7 +27,14 @@ def creationDiagrammeCIE1931(listePositions:list):
         x_tighten=True,
         y_tighten=True)
 
+
+
 # Partie émission
+
+
+
+# Codage du message
+
 
 def codageBinaire(nombre:int, taillePaquet:int) -> str:
     """
@@ -83,17 +89,24 @@ def codageManchester(messageBin:str) -> str:
                 messageMan += "0"
     return messageMan
 
-def creationPointsPrimaires(couleurs:list):
+
+# Creation fonctions de transformations et points des couleurs primaires
+
+
+def creationCouleursPrimairesxy(couleursPrimairesXYZ:dict) -> dict:
     """
     on suppose que le spectre de la distribution de puissance des couleurs primaires possède un pic au niveau
     de leur longueur d'onde dominante, on néglige le reste
     donc X = x(lambda) ...
     """
+    listeCouleursPrimaires = ["red", "green", "blue"]
     couleursPrimairesxy = {}
-    for couleurPrimaire in couleurs:
-        if couleurPrimaire == "red":
-            couleurPrimaireXYZ = [jkdsf, jksldf, shjldfhk]
-            couleursPrimairesxy[couleursPrimairesxy] = []
+
+    for couleur in listeCouleursPrimaires:
+        denominateur = np.sum(couleursPrimairesXYZ[couleur])
+        couleursPrimairesxy[couleur] = np.array([couleursPrimairesXYZ[couleur][0]/denominateur, couleursPrimairesXYZ[couleur][1]/denominateur])
+    
+    return couleursPrimairesxy
 
 
 def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
@@ -147,52 +160,42 @@ def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir 
         messageXYZ[2, ] = (1-x-y)*Y/y
     return messageXYZ
 
-def XYZ_to_RB(): # R, G, B = scalaire entre 0.0 et 1.0
+def XYZ_to_RGB(messageXYZ:list, couleursPrimairesXYZ:list): # R, G, B = scalaire entre 0.0 et 1.0
     # On veut la ligne du milieu 0 pour avoir G = 0
     M = np.ones((3, 3))
     M[1, :] = 0
     return M
 
-def csk(messageMan:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int) -> list:
+def csk(messageMan:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int) -> list:
     """
     transforme le message en chromacité en valeurs de tension pour les LEDS
     on utilise la modulation colors shifting keying (CSK)
     """
+    couleursPrimairesxy = creationCouleursPrimairesxy(couleursPrimairesXYZ)
 
+    # TEST
+    listex = [couleursPrimairesxy["red"][0], couleursPrimairesxy["green"][0], couleursPrimairesxy["blue"][0], couleursPrimairesxy["red"][0]] # on répète le premier terme pour fermer le triangle
+    listey = [couleursPrimairesxy["red"][1], couleursPrimairesxy["green"][1], couleursPrimairesxy["blue"][1], couleursPrimairesxy["red"][1]]
+    listePositions = [listex, listey]
+    print(listePositions)
+    creationDiagrammeCIE1931(listePositions)
 
-    couleursPrimairesxy = {}
-
-
-    couleursPrimairesxy = creationPointsPrimaires()
     dicoPointsPrimaires = creationCodagePoints(couleursPrimairesxy, nombreSubdivisions)
     messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
     messageXYZ = xyY_to_XYZ(messagexy, Y)
-    messageRGB = XYZ_to_RB(messageXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
+    messageRGB = XYZ_to_RGB(messageXYZ, couleursPrimairesXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
+    tensions = messageRGB*(tensionMax)
 
-    tension = np.zeros((3, messageRGB.shape[1]), dtype=np.float32)
-    for indice in range(messageRGB.shape[1]):
-        tension[0, indice] = tensionMin - messageRGB[0, indice]*(tensionMin - tensionMax)
-        tension[2, indice] = tensionMin - messageRGB[1, indice]*(tensionMin - tensionMax)
+    return np.repeat(tensions, repeat=N, axis=1) # chaque colonne est dupliqué N fois
 
-        for k in range(3):
-            if tension[k, indice] < float(tensionMin):
-                tension[k, indice] = float(tensionMin)
-                print("valeur de tension inférieure à tensionMin V")
-            elif tension[k, indice] > float(tensionMax):
-                tension[k, indice] = float(tensionMax)
-                print("valeur de tension supérieure à tensionMax V")
-    np.round(tension, 2)
-
-    return np.repeat(tension, repeat=N, axis=1) # chaque colonne est dupliqué N fois
-
-def emission(message:str, nombreSubdivisions:int, tensionMin:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
+def emission(message:str, nombreSubdivisions:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
     messageMan = startMan + codageManchester(encodage(message, 8)) + endMan # accroches ajoutées au message
-    return csk(messageMan, nombreSubdivisions, tensionMin, tensionMax, N, Y)
+    return csk(messageMan, nombreSubdivisions, tensionMax, N, Y)
 
 
 # Partie réception
 
-def calibragePrimaires(tensionMax:float) -> list:
+def calibragePrimaires(tensionMax:int) -> list:
     """
     A chaque couleur primaire on attribue les valeurs des photodiodes
     tensionsCouleurs : chaque ligne = couleur, colonnes = LED rouge, LED verte, LED bleu
@@ -203,17 +206,17 @@ def calibragePrimaires(tensionMax:float) -> list:
 
     tensionsCouleurs = np.identity(3)*tensionMax
     tensionsEmission = np.repeat(tensionsCouleurs, repeats=N, axis=1) # axis = colonnes
-    tensionsReceptionMoy = np.zeros((3, 3))
 
+    tensionsReceptionMoy = np.zeros((3, 3))
+    indiceCouleur = 0
     for couleur in tensionsEmission:
         sys.config_sortie(1, techantSortie*1e6, couleur) # en microsecondes et non périodique
         sys.declencher_sorties(1, 0)
 
-        # TECHANTENTREE < TECHANTSORTIE sinon on va mesurer des couleurs intermédiaire !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # TECHANTENTREE < TECHANTSORTIE sinon on va mesurer des couleurs intermédiaire !!!!!!!!!!!
         techantEntree = 1e-3 # période d'échantillonnage en secondes
         tempsReception = 2 # en secondes
         nbpoints = int(tempsReception/techantEntree)
-        N_reception = int(temissionBit/techantEntree)
         
         sys.config_entrees([1, 2, 3], [10]) # attention 10 V max
         sys.config_echantillon(techantEntree*1e6, nbpoints) # période d'échantillonnage en microsecondes
@@ -230,10 +233,15 @@ def calibragePrimaires(tensionMax:float) -> list:
         sys.fermer()
 
         # tensions = [liste_entrée1, liste_entrée2, liste_entrée3]
-        ...
+        for tensionCouleur in tensions:
+            np.mean(tensionCouleur)
+
+        tensionsReceptionMoy[indiceCouleur, :] = tensions
+        indiceCouleur += 1
 
     # tensionsCouleurs = M * tensionsReceptionMoy
     # M = tensionsCouleurs * (tensionsReceptionMoy)^-1
     M = tensionsCouleurs @ np.linalg.inv(tensionsReceptionMoy)
 
     return M
+

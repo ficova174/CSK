@@ -7,18 +7,25 @@ import pycanum.main as pycan
 from colour.plotting import *
 
 matplotlib.use("Qt5Agg")
-sys = pycan.Sysam("SP5")
+###########################################################################################################sys = pycan.Sysam("SP5")
 
 # Création du diagramme et affichage des points (gamut)
 
-def creationDiagrammeCIE1931(listePositions:list):
+def creationDiagrammeCIE1931(dictTriangle:list, dictPoints:list, positionsBitsMessage:list):
     # Plotting the *CIE 1931 Chromaticity Diagram*.
     # The argument *show=False* is passed so that the plot doesn't get
     # displayed and can be used as a basis for other plots.
     plot_chromaticity_diagram_CIE1931(show=False)
 
+    positionsTriangle = np.array(list(dictTriangle.values())).T
+    positionsTriangle = np.concatenate((positionsTriangle, positionsTriangle[:, 0].reshape(-1, 1)), axis=1) # reshape permet de transformer un tableau ligne en tableau colonne (.T ne marche pas)
+
+    positionsBitsRef = np.array(list(dictPoints.values())).T
+
     # Plotting  chromaticity coordinates.
-    plt.plot(listePositions[0], listePositions[1], 'o-', color='black')
+    plt.plot(positionsTriangle[0], positionsTriangle[1], 'x-', color='black')
+    plt.scatter(positionsBitsRef[0, :], positionsBitsRef[1, :], marker='x', color='green', s=100)
+    # plt.scatter(positionsBitsMessage[0, :], positionsBitsMessage[1, :], marker='x', color='yellow')
 
     # Displaying the plot.
     render(
@@ -125,23 +132,28 @@ def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
     ...
     pointDiag["11"] = np.array([[x], [y]]) blue
     """
-    distanceCouleursPrimaires = couleursPrimairesxy["red"]-couleursPrimairesxy["blue"]
+    distanceCouleursPrimaires = (couleursPrimairesxy["red"]-couleursPrimairesxy["blue"])/nombreSubdivisions
     listePointsxy = np.zeros((2, nombreSubdivisions+1))
-    listePointsxy[:, 0] = couleursPrimairesxy["blue"]
-    listePointsxy[:, nombreSubdivisions+1] = couleursPrimairesxy["red"]
-    for point in range(1, nombreSubdivisions):
-        listePointsxy[:, point] = couleursPrimairesxy["blue"] + point*distanceCouleursPrimaires
-    
-    pointsDiagramme = {}
-    for valeur in range(nombreSubdivisions):
-        pointsDiagramme[codageBinaire(valeur, 2)] = listePointsxy # codage binaire à l'envers = problème ?
 
-    return np.round(pointsDiagramme, 2)
+    listePointsxy[:, 0] = couleursPrimairesxy["blue"]
+    listePointsxy[:, nombreSubdivisions] = couleursPrimairesxy["red"]
+
+    for point in range(nombreSubdivisions+1):
+        listePointsxy[:, point] = couleursPrimairesxy["blue"] + point*distanceCouleursPrimaires
+
+    pointsDiagramme = {}
+    for valeur in range(nombreSubdivisions+1):
+        pointsDiagramme[codageBinaire(valeur, 2)] = np.round(listePointsxy[:, valeur], 2) # codage binaire à l'envers = problème ?
+
+    print(pointsDiagramme)
+
+    return pointsDiagramme
 
 def positionsDiagramme(messageMan:str, pointsDiagramme:dict) -> list:
     """
     """
-    messagexy = np.zeros((2, len(messageMan)/2))
+    nb_colonnes = int(len(messageMan)/2) # aucun soucis car manchester double taille message donc longueur forcément paire
+    messagexy = np.zeros((2, nb_colonnes))
     indice = 0
     for k in range(0, len(messageMan)-2, 2):
         messagexy[:, indice] = pointsDiagramme[messageMan[k:k+2]]
@@ -169,28 +181,24 @@ def XYZ_to_RGB(messageXYZ:list, couleursPrimairesXYZ:list): # R, G, B = scalaire
 def csk(messageMan:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int) -> list:
     """
     transforme le message en chromacité en valeurs de tension pour les LEDS
-    on utilise la modulation colors shifting keying (CSK)
+    on utilise la modulation color shifting keying (CSK)
     """
     couleursPrimairesxy = creationCouleursPrimairesxy(couleursPrimairesXYZ)
-
-    # TEST
-    listex = [couleursPrimairesxy["red"][0], couleursPrimairesxy["green"][0], couleursPrimairesxy["blue"][0], couleursPrimairesxy["red"][0]] # on répète le premier terme pour fermer le triangle
-    listey = [couleursPrimairesxy["red"][1], couleursPrimairesxy["green"][1], couleursPrimairesxy["blue"][1], couleursPrimairesxy["red"][1]]
-    listePositions = [listex, listey]
-    print(listePositions)
-    creationDiagrammeCIE1931(listePositions)
-
     dicoPointsPrimaires = creationCodagePoints(couleursPrimairesxy, nombreSubdivisions)
     messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
+
+    # AFFICHAGE
+    creationDiagrammeCIE1931(couleursPrimairesxy, dicoPointsPrimaires, messagexy)
+
     messageXYZ = xyY_to_XYZ(messagexy, Y)
     messageRGB = XYZ_to_RGB(messageXYZ, couleursPrimairesXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
     tensions = messageRGB*(tensionMax)
 
-    return np.repeat(tensions, repeat=N, axis=1) # chaque colonne est dupliqué N fois
+    return np.repeat(tensions, repeats=N, axis=1) # chaque colonne est dupliqué N fois
 
-def emission(message:str, nombreSubdivisions:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
+def emission(message:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int, startMan:str, endMan:str) -> list:
     messageMan = startMan + codageManchester(encodage(message, 8)) + endMan # accroches ajoutées au message
-    return csk(messageMan, nombreSubdivisions, tensionMax, N, Y)
+    return csk(messageMan, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, Y)
 
 
 # Partie réception

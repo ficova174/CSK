@@ -2,7 +2,7 @@ from csk import *
 import matplotlib.pyplot as plt
 import pycanum.main as pycan
 
-sys = pycan.Sysam("SP5")
+###########################################################################################################sys = pycan.Sysam("SP5")
 
 # PARAMETRES EMISSION
 
@@ -14,12 +14,12 @@ techantSortie = 1e-3 # période d'échantillonnage en secondes
 temissionBit = 1e-2
 N = int(temissionBit/techantSortie) # nombre de points représentant 1 bit
 tensionMax = 5
-nombreSubdivisions = 4
+nombreSubdivisions = 3
 # message = input("Message à envoyer : ")
 message = 'jellooo'
 startMan = codageManchester(creationAccroche('a'))
 endMan = codageManchester(creationAccroche('z'))
-signal = emission(message, nombreSubdivisions, tensionMax, N, 1, startMan, endMan)
+signal = emission(message, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, 1, startMan, endMan)
 
 sys.config_sortie(1, techantSortie*1e6, signal[0])
 sys.config_sortie(2, techantSortie*1e6, signal[2]) # en microsecondes et non périodique

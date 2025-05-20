@@ -77,16 +77,15 @@ def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
     tensions = np.zeros((2, len(messageMan)/2)) # /2 pas de problème car Manchester double taille donc paire
 
     indice = 0
-    while indice != len(messageMan)/2:
-        for k in range(0, len(messageMan)-2, 2):
-            tensions[:indice] = dictCentres[messageMan[k:k+2]]
-            indice += 1
+    for k in range(0, len(messageMan)-2, 2):
+        tensions[:, indice] = dictCentres[messageMan[k:k+2]]
+        indice += 1
 
     return np.repeat(tensions, repeats=N, axis=1) # chaque colonne est dupliqué N fois
 
-def emission(message:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int, start:str, end:str) -> list:
+def emission(message:str, start:str, end:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
     messageMan = codageManchester(start + encodage(message) + end) # accroches ajoutées au message
-    return csk(messageMan, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, Y)
+    return csk(messageMan, nombreSubdivisions, tensionMax, N)
 
 
 # Partie réception

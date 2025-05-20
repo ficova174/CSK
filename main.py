@@ -2,13 +2,9 @@ from csk import *
 import matplotlib.pyplot as plt
 import pycanum.main as pycan
 
-###########################################################################################################sys = pycan.Sysam("SP5")
+sys = pycan.Sysam("SP5")
 
 # PARAMETRES EMISSION
-
-couleursPrimairesXYZ = {"red":[0.794186, 0.3447768, 0.00013596], # liste X = x(lambda), Y = y(lambda)...  lambda = 623 nm
-                        "green":[0.08973996, 0.7619694, 0.06456784], # lambda = 523 nm
-                        "blue":[0.2184072, 0.0836668, 1.3898799]} # lambda = 468 nm
 
 techantSortie = 1e-3 # période d'échantillonnage en secondes
 temissionBit = 1e-2
@@ -18,12 +14,10 @@ nombreSubdivisions = 3
 # message = input("Message à envoyer : ")
 message = 'jellooo'
 (start, end) = creationAccroches('a', 'z', 10)
-signal = emission(message, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, 1, start, end)
+signal = emission(message, start, end, nombreSubdivisions, tensionMax, N)
 
 sys.config_sortie(1, techantSortie*1e6, signal[0])
-sys.config_sortie(2, techantSortie*1e6, signal[2]) # en microsecondes et non périodique
-sys.declencher_sorties(1, 0)
-sys.declencher_sorties(0, 1)
+sys.config_sortie(2, techantSortie*1e6, signal[1]) # en microsecondes et non périodique
 
 # PARAMETRES RECEPTION
 
@@ -50,10 +44,6 @@ tensions = sys.entrees()
 sys.fermer()
 
 # Résultats
-
-print(N)
-print(N_reception)
-
 
 # Ce qu'on envoie aux LEDs
 

@@ -9,7 +9,6 @@ from bitarray import bitarray
 matplotlib.use("Qt5Agg")
 ###########################################################################################################sys = pycan.Sysam("SP5")
 
-
 # Partie émission
 
 
@@ -60,99 +59,28 @@ def codageManchester(messageBin:str) -> str:
                 messageMan += "0"
     return messageMan
 
-def creationCouleursPrimairesxy(couleursPrimairesXYZ:dict) -> dict:
-    """
-    on suppose que le spectre de la distribution de puissance des couleurs primaires possède un pic au niveau
-    de leur longueur d'onde dominante, on néglige le reste
-    donc X = x(lambda) ...
-    """
-    listeCouleursPrimaires = ["red", "green", "blue"]
-    couleursPrimairesxy = {}
+def centreToBits(tensionMax:float, nombreSubdivisions:int):
+    dictCentres = {}
+    centres = np.ones((2, nombreSubdivisions+1))*np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
 
-    for couleur in listeCouleursPrimaires:
-        denominateur = np.sum(couleursPrimairesXYZ[couleur])
-        couleursPrimairesxy[couleur] = np.array([couleursPrimairesXYZ[couleur][0]/denominateur, couleursPrimairesXYZ[couleur][1]/denominateur])
-
-    return couleursPrimairesxy
-
-def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
-    """
-    on pose 2 couleurs primaires sur le diagramme puis on met des points équidistants sur la droite les rejoignant
-    x = (G*primary_green_x + B*primary_blue_x)/(G + B)
-    y = (G*primary_green_y + B*primary_blue_y)/(G + B)
-    c'est linéaire
-    G, B entre 0.0 et 1.0
-    couleursPrimairesxy["red"] = [x,
-                                  y]
-    np array
+    for k in range(nombreSubdivisions+1):
+        dictCentres[codageBinaire(k, 2)] = centres[:, k]
     
-    pointDiag["00"] = np.array([[x], [y]]) red
-    pointDiag["01"] = np.array([[x], [y]])
-    ...
-    pointDiag["11"] = np.array([[x], [y]]) blue
-    """
-    distanceCouleursPrimaires = (couleursPrimairesxy["red"]-couleursPrimairesxy["blue"])/nombreSubdivisions
-    listePointsxy = np.zeros((2, nombreSubdivisions+1))
+    return dictCentres
 
-    listePointsxy[:, 0] = couleursPrimairesxy["blue"]
-    listePointsxy[:, nombreSubdivisions] = couleursPrimairesxy["red"]
-
-    for point in range(nombreSubdivisions+1):
-        listePointsxy[:, point] = couleursPrimairesxy["blue"] + point*distanceCouleursPrimaires
-
-    pointsDiagramme = {}
-    for valeur in range(nombreSubdivisions+1):
-        pointsDiagramme[codageBinaire(valeur, 2)] = np.round(listePointsxy[:, valeur], 2) # codage binaire à l'envers = problème ?
-
-    print(pointsDiagramme)
-
-    return pointsDiagramme
-
-def positionsDiagramme(messageMan:str, pointsDiagramme:dict) -> list:
-    """
-    """
-    nb_colonnes = int(len(messageMan)/2) # aucun soucis car manchester double taille message donc longueur forcément paire
-    messagexy = np.zeros((2, nb_colonnes))
-    indice = 0
-    for k in range(0, len(messageMan), 2):
-        messagexy[:, indice] = pointsDiagramme[messageMan[k:k+2]]
-        indice += 1
-    if messagexy.shape[1] != len(messageMan)/2:
-        print("Attention : messageChromacity.shape[1] != len(messageMan)/2")
-    return messagexy
-
-def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir expérimentalement et en fonction du RGB obtenu
-    messageXYZ = np.zeros((3, messagexy.shape[1]))
-    for indice in range(messagexy.shape[1]):
-        x = messagexy[0, indice]
-        y = messagexy[1, indice]
-        messageXYZ[0, indice] = Y*x/y
-        messageXYZ[1, indice] = Y
-        messageXYZ[2, indice] = (1-x-y)*Y/y
-    return messageXYZ
-
-def XYZ_to_RGB(messageXYZ:list, couleursPrimairesXYZ:list): # R, G, B = scalaire entre 0.0 et 1.0
-    # on veut la ligne du milieu 0 pour avoir G = 0
-    # RGB (Id) = M @ listeCouleursPrimairesXYZ
-    # M = (listeCouleursPrimairesXYZ)^-1
-    listeCouleursPrimairesXYZ = np.array(list(couleursPrimairesXYZ.values())).T
-    M = np.linalg.inv(listeCouleursPrimairesXYZ)
-    return M @ messageXYZ
-
-def csk(messageMan:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int) -> list:
+def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
     """
     transforme le message en chromacité en valeurs de tension pour les LEDS
     on utilise la modulation color shifting keying (CSK)
     """
-    couleursPrimairesxy = creationCouleursPrimairesxy(couleursPrimairesXYZ)
-    dicoPointsPrimaires = creationCodagePoints(couleursPrimairesxy, nombreSubdivisions)
-    messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
+    dictCentres = centreToBits(tensionMax, nombreSubdivisions)
+    tensions = np.zeros((2, len(messageMan)/2)) # /2 pas de problème car Manchester double taille donc paire
 
-    messageXYZ = xyY_to_XYZ(messagexy, Y)
-    print(np.array(list(couleursPrimairesXYZ.values())).T)
-    messageRGB = XYZ_to_RGB(messageXYZ, couleursPrimairesXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
-    print(messageRGB)
-    tensions = messageRGB*(tensionMax)
+    indice = 0
+    while indice != len(messageMan)/2:
+        for k in range(0, len(messageMan)-2, 2):
+            tensions[:indice] = dictCentres[messageMan[k:k+2]]
+            indice += 1
 
     return np.repeat(tensions, repeats=N, axis=1) # chaque colonne est dupliqué N fois
 
@@ -217,30 +145,34 @@ def calibragePhotodiodes(tensionMax:float) -> list:
     # M = (tensionsReceptionMoy)^-1
     return np.linalg.inv(tensionsReceptionMoy)
 
-def pointsPlan(tensions:list, tension_to_RB:list):
+def pointsPlan(tensions:list, tension_to_RB:list) -> dict:
     positions = np.zeros((2, len(tensions))) # positions x, y
     for indice in range(len(tensions)):
         positions[:, indice] = tension_to_RB @ tensions[:, indice]
+    return positions
 
-def pointsToBits(pointsPlan:list, centresPlan:list):
-    pass
+def pointsToBits(pointsBits:list, dictCentres:list) -> str:
+    signalBinMan = ''
+    for indicePoint in range(pointsBits.shape[1]):
+        distance = float.inf
+        bits_temp = ''
+        for bits in dictCentres:
+            distance_temp = (pointsBits[0, indicePoint]-dictCentres[bits][0])**2 + (pointsBits[1, indicePoint]-dictCentres[bits][1])**2
+            if distance_temp <= distance:
+                distance = distance_temp
+                bits_temp = bits
+        if distance == float.inf:
+            print("Erreur dans pointsToBits(), distance non calculée")
+        signalMan += bits_temp
+    return signalBinMan
 
-def demodulation(tensions:list, tensionMax:float, nombreSubdivisions:int):
-    centresPlan = np.ones((2, nombreSubdivisions+1))*np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
+def demodulation(tensions:list, tensionMax:float, nombreSubdivisions:int) -> str:
+    dictCentres = centreToBits(tensionMax, nombreSubdivisions)
     tension_to_RB = calibragePhotodiodes(tensionMax)
 
-    pointsPlan = pointsPlan(tensions, tension_to_RB)
-    signal = pointsToBits(pointsPlan, centresPlan)
-
-def codageBaseDix(byte:str) -> int:
-    """
-    nombre binaire -> nombre décimal
-    attention on code de gauche à droite (petites puissances à gauche)
-    """
-    asciiDecimal = 0
-    for bit in range(len(byte)):
-        asciiDecimal += int(byte[bit]) * (2 ** bit) # A VERIFIER (n-k) au lieu de k
-    return asciiDecimal
+    pointsBits = pointsPlan(tensions, tension_to_RB)
+    signalBinMan = pointsToBits(pointsBits, dictCentres)
+    return signalBinMan
 
 def decodageMan(signalBinMan:str) -> str:
     """
@@ -295,16 +227,15 @@ def detectionAccroche(signalBin:str, start:str, end:str, maxErreursAccroche:int)
 
     return signalBin[start:end]
 
-def demodulation(tension:list, N_reception:int, start:str, end:str, maxErreursAccroche:int) -> str:
+def codageBaseDix(byte:str) -> int:
     """
-    on extraie le message binaire (sans les accroches) de la liste des tensions
+    nombre binaire -> nombre décimal
+    attention on code de gauche à droite (petites puissances à gauche)
     """
-    tension = tension[0] #sys.entree me renvoie une liste avec un tableau unidimensionnel de tension à l'intérieur
-    tension = np.round(tension, 2) # on arrondit les éléments pour la suite
-
-    messageBin = detectionAccroche(signalBin, start, end, maxErreursAccroche)
-
-    return messageBin
+    asciiDecimal = 0
+    for bit in range(len(byte)):
+        asciiDecimal += int(byte[bit]) * (2 ** bit) # A VERIFIER (n-k) au lieu de k
+    return asciiDecimal
 
 def decodageASCII(messageBin:str) -> str:
     """
@@ -315,5 +246,8 @@ def decodageASCII(messageBin:str) -> str:
         messageTransmis += chr(codageBaseDix(messageBin[posLettre:posLettre+8]))
     return messageTransmis
 
-def reception(tension:list, N_reception:int, start:str, end:str, maxErreursAccroche:int) -> str:
-    return decodageASCII(demodulation(tension, N_reception, start, end, maxErreursAccroche))
+def reception(tension:list, tensionMax:float, start:str, end:str, nombreSubdivisions:int, maxErreursAccroche:int) -> str:
+    signalBinMan = demodulation(tension, tensionMax, nombreSubdivisions)
+    signalBin = decodageMan(signalBinMan)
+    messageBin = detectionAccroche(signalBin, start, end, maxErreursAccroche)
+    return decodageASCII(messageBin)

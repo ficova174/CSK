@@ -110,7 +110,6 @@ def creationCouleursPrimairesxy(couleursPrimairesXYZ:dict) -> dict:
     
     return couleursPrimairesxy
 
-
 def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
     """
     on pose 2 couleurs primaires sur le diagramme puis on met des points équidistants sur la droite les rejoignant
@@ -197,6 +196,7 @@ def emission(message:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, ten
 
 
 # Partie réception
+
 
 def calibragePrimaires(tensionMax:int) -> list:
     """
@@ -336,7 +336,9 @@ def chercheIndiceAccroche(signalBin:str, accroche:str, role:str, maxErreursAccro
 
     indiceAccroche = float.inf
     accrocheBits = bitarray(accroche)
-    for indice in range(len(signalBin)-len(accroche)):
+    indice = 0
+    while indiceAccroche == float.inf and indice <= len(signalBin)-len(accroche):
+        indice += 1
         signalBits = bitarray(signalBin[indice:indice+len(accroche)])
         nombreErreurs = (signalBits ^ accrocheBits).count() # ^ représente l'opérateur XOR
         if nombreErreurs <= maxErreursAccroche and role == 'start':

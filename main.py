@@ -17,9 +17,8 @@ tensionMax = 5
 nombreSubdivisions = 3
 # message = input("Message à envoyer : ")
 message = 'jellooo'
-start = creationAccroche('a', 10)
-end = creationAccroche('z', 10)
-signal = emission(message, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, 5, start, end)
+(start, end) = creationAccroches('a', 'z', 10)
+signal = emission(message, couleursPrimairesXYZ, nombreSubdivisions, tensionMax, N, 1, start, end)
 
 sys.config_sortie(1, techantSortie*1e6, signal[0])
 sys.config_sortie(2, techantSortie*1e6, signal[2]) # en microsecondes et non périodique

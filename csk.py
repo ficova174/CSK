@@ -4,47 +4,16 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import pycanum.main as pycan
-from colour.plotting import *
 from bitarray import bitarray
 
 matplotlib.use("Qt5Agg")
 ###########################################################################################################sys = pycan.Sysam("SP5")
 
-# Création du diagramme et affichage des points (gamut)
-
-def creationDiagrammeCIE1931(dictTriangle:list, dictPoints:list, positionsBitsMessage:list):
-    # Plotting the *CIE 1931 Chromaticity Diagram*.
-    # The argument *show=False* is passed so that the plot doesn't get
-    # displayed and can be used as a basis for other plots.
-    plot_chromaticity_diagram_CIE1931(show=False)
-
-    positionsTriangle = np.array(list(dictTriangle.values())).T
-    positionsTriangle = np.concatenate((positionsTriangle, positionsTriangle[:, 0].reshape(-1, 1)), axis=1) # reshape permet de transformer un tableau ligne en tableau colonne (.T ne marche pas)
-
-    positionsBitsRef = np.array(list(dictPoints.values())).T
-
-    # Plotting  chromaticity coordinates.
-    plt.plot(positionsTriangle[0], positionsTriangle[1], 'x-', color='black')
-    plt.scatter(positionsBitsRef[0, :], positionsBitsRef[1, :], marker='x', color='green', s=100)
-    # plt.scatter(positionsBitsMessage[0, :], positionsBitsMessage[1, :], marker='x', color='yellow')
-
-    # Displaying the plot.
-    render(
-        show=True,
-        limits=(-0.1, 0.9, -0.1, 0.9),
-        x_tighten=True,
-        y_tighten=True)
-
-
 
 # Partie émission
 
 
-
-# Codage du message
-
-
-def codageBinaire(nombre:int) -> str:
+def codageBinaire(nombre:int, taillePaquet:int) -> str:
     """
     nombre décimal -> nombre en binaire
     attention on code de gauche à droite (petites puissances à gauche)
@@ -53,7 +22,7 @@ def codageBinaire(nombre:int) -> str:
     while nombre > 0:
         nombreBin += str(nombre % 2)
         nombre //= 2
-    while len(nombreBin) < 8: # on veut une taille fixe, on ajoute des 0
+    while len(nombreBin) < taillePaquet: # on veut une taille fixe, on ajoute des 0
         nombreBin += '0'
     return nombreBin
 
@@ -64,14 +33,14 @@ def encodage(message:str) -> str:
     messageBin = ''
     for lettre in message:
         lettre = ord(lettre) # ASCII décimal (int)
-        messageBin += codageBinaire(lettre)
+        messageBin += codageBinaire(lettre, 8)
     return messageBin
 
-def creationAccroche(lettre:str, nombreRepetitions) -> str:
+def creationAccroches(lettreStart:str, lettreEnd:str, nombreRepetitions:int) -> str:
     """
     on créée une succession improbable
     """
-    return encodage(lettre)*nombreRepetitions
+    return (encodage(lettreStart)*nombreRepetitions, encodage(lettreEnd)*nombreRepetitions)
 
 # Codage Manchester (IEEE 802.3)
 def codageManchester(messageBin:str) -> str:
@@ -91,10 +60,6 @@ def codageManchester(messageBin:str) -> str:
                 messageMan += "0"
     return messageMan
 
-
-# Creation fonctions de transformations et points des couleurs primaires
-
-
 def creationCouleursPrimairesxy(couleursPrimairesXYZ:dict) -> dict:
     """
     on suppose que le spectre de la distribution de puissance des couleurs primaires possède un pic au niveau
@@ -107,7 +72,7 @@ def creationCouleursPrimairesxy(couleursPrimairesXYZ:dict) -> dict:
     for couleur in listeCouleursPrimaires:
         denominateur = np.sum(couleursPrimairesXYZ[couleur])
         couleursPrimairesxy[couleur] = np.array([couleursPrimairesXYZ[couleur][0]/denominateur, couleursPrimairesXYZ[couleur][1]/denominateur])
-    
+
     return couleursPrimairesxy
 
 def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
@@ -118,7 +83,7 @@ def creationCodagePoints(couleursPrimairesxy:dict, nombreSubdivisions:int):
     c'est linéaire
     G, B entre 0.0 et 1.0
     couleursPrimairesxy["red"] = [x,
-                                y]
+                                  y]
     np array
     
     pointDiag["00"] = np.array([[x], [y]]) red
@@ -149,28 +114,30 @@ def positionsDiagramme(messageMan:str, pointsDiagramme:dict) -> list:
     nb_colonnes = int(len(messageMan)/2) # aucun soucis car manchester double taille message donc longueur forcément paire
     messagexy = np.zeros((2, nb_colonnes))
     indice = 0
-    for k in range(0, len(messageMan)-2, 2):
+    for k in range(0, len(messageMan), 2):
         messagexy[:, indice] = pointsDiagramme[messageMan[k:k+2]]
         indice += 1
-    if messagexy.shape[1] == len(messageMan)/2:
-        return messagexy
-    print("messageChromacity.shape[1] == len(messageMan)/2")
+    if messagexy.shape[1] != len(messageMan)/2:
+        print("Attention : messageChromacity.shape[1] != len(messageMan)/2")
+    return messagexy
 
 def xyY_to_XYZ(messagexy:list, Y:int): # Y représente la luminance, à choisir expérimentalement et en fonction du RGB obtenu
     messageXYZ = np.zeros((3, messagexy.shape[1]))
     for indice in range(messagexy.shape[1]):
         x = messagexy[0, indice]
         y = messagexy[1, indice]
-        messageXYZ[0, ] = Y*x/y
-        messageXYZ[1, ] = Y
-        messageXYZ[2, ] = (1-x-y)*Y/y
+        messageXYZ[0, indice] = Y*x/y
+        messageXYZ[1, indice] = Y
+        messageXYZ[2, indice] = (1-x-y)*Y/y
     return messageXYZ
 
 def XYZ_to_RGB(messageXYZ:list, couleursPrimairesXYZ:list): # R, G, B = scalaire entre 0.0 et 1.0
-    # On veut la ligne du milieu 0 pour avoir G = 0
-    M = np.ones((3, 3))
-    M[1, :] = 0
-    return M
+    # on veut la ligne du milieu 0 pour avoir G = 0
+    # RGB (Id) = M @ listeCouleursPrimairesXYZ
+    # M = (listeCouleursPrimairesXYZ)^-1
+    listeCouleursPrimairesXYZ = np.array(list(couleursPrimairesXYZ.values())).T
+    M = np.linalg.inv(listeCouleursPrimairesXYZ)
+    return M @ messageXYZ
 
 def csk(messageMan:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensionMax:int, N:int, Y:int) -> list:
     """
@@ -181,11 +148,10 @@ def csk(messageMan:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, tensi
     dicoPointsPrimaires = creationCodagePoints(couleursPrimairesxy, nombreSubdivisions)
     messagexy = positionsDiagramme(messageMan, dicoPointsPrimaires)
 
-    # AFFICHAGE
-    creationDiagrammeCIE1931(couleursPrimairesxy, dicoPointsPrimaires, messagexy)
-
     messageXYZ = xyY_to_XYZ(messagexy, Y)
+    print(np.array(list(couleursPrimairesXYZ.values())).T)
     messageRGB = XYZ_to_RGB(messageXYZ, couleursPrimairesXYZ) # tableau numpy 3 lignes len(messageXYZ) colonnes
+    print(messageRGB)
     tensions = messageRGB*(tensionMax)
 
     return np.repeat(tensions, repeats=N, axis=1) # chaque colonne est dupliqué N fois
@@ -198,19 +164,18 @@ def emission(message:str, couleursPrimairesXYZ:dict, nombreSubdivisions:int, ten
 # Partie réception
 
 
-def calibragePrimaires(tensionMax:int) -> list:
+def calibragePhotodiodes(tensionMax:float) -> list:
     """
     A chaque couleur primaire on attribue les valeurs des photodiodes
-    RGB : chaque ligne = couleur, colonnes = LED rouge, LED verte, LED bleu
     """
     techantSortie = 1e-3 # période d'échantillonnage en secondes
     temissionBit = 1e-2
     N = int(temissionBit/techantSortie)
 
-    RGB = np.identity(3)
-    tensionsEmission = np.repeat(RGB*tensionMax, repeats=N, axis=1) # axis = colonnes
+    tension_RB = np.identity(2)*tensionMax
+    tensionsEmission = np.repeat(tension_RB, repeats=N, axis=1) # axis = colonnes
 
-    tensionsReceptionMoy = np.zeros((3, 3))
+    tensionsReceptionMoy = np.zeros((2, 2))
     indiceCouleur = 0
     for couleur in tensionsEmission:
         sys.config_sortie(1, techantSortie*1e6, couleur) # en microsecondes et non périodique
@@ -221,39 +186,51 @@ def calibragePrimaires(tensionMax:int) -> list:
         tempsReception = 2 # en secondes
         nbpoints = int(tempsReception/techantEntree)
         
-        sys.config_entrees([1, 2, 3], [10]) # attention 10 V max
+        sys.config_entrees([1, 2], [10]) # attention 10 V max
         sys.config_echantillon(techantEntree*1e6, nbpoints) # période d'échantillonnage en microsecondes
         sys.config_quantification(12)
 
         # Emission/acquisition
 
         sys.acquerir()
-        sys.declencher_sorties(1, 0)
-        sys.stopper_sorties(1, 0)
+        sys.declencher_sorties(1, 1)
+        sys.stopper_sorties(1, 1)
 
         # Ce que l'on reçoit
         tensions = sys.entrees()
         sys.fermer()
 
-        # tensions = [liste_entrée1, liste_entrée2, liste_entrée3]
+        print(tensions)
+        # tensions = [liste_entrée1, liste_entrée2]
         for tensionCouleur in tensions:
             np.mean(tensionCouleur)
 
         tensionsReceptionMoy[indiceCouleur, :] = tensions
         indiceCouleur += 1
 
+    """
+                                 rouge, bleu
+    on veut tensionsReceptionMoy = [U_r, U_r,
+                                    U_b, U_b]
+    """
     # RGB (Id) = M * tensionsReceptionMoy
     # M = (tensionsReceptionMoy)^-1
-    M = np.linalg.inv(tensionsReceptionMoy)
+    return np.linalg.inv(tensionsReceptionMoy)
 
-    return M
+def pointsPlan(tensions:list, tension_to_RB:list):
+    positions = np.zeros((2, len(tensions))) # positions x, y
+    for indice in range(len(tensions)):
+        positions[:, indice] = tension_to_RB @ tensions[:, indice]
 
-def RGB_to_xyY(): # Approximation X = x(lambda) parait ici moins réaliste
+def pointsToBits(pointsPlan:list, centresPlan:list):
     pass
 
-def xyY_to_binary():
-    # On cherche le point codant le plus proche
-    pass
+def demodulation(tensions:list, tensionMax:float, nombreSubdivisions:int):
+    centresPlan = np.ones((2, nombreSubdivisions+1))*np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
+    tension_to_RB = calibragePhotodiodes(tensionMax)
+
+    pointsPlan = pointsPlan(tensions, tension_to_RB)
+    signal = pointsToBits(pointsPlan, centresPlan)
 
 def codageBaseDix(byte:str) -> int:
     """
@@ -264,51 +241,6 @@ def codageBaseDix(byte:str) -> int:
     for bit in range(len(byte)):
         asciiDecimal += int(byte[bit]) * (2 ** bit) # A VERIFIER (n-k) au lieu de k
     return asciiDecimal
-
-def decoupeListe(dividedSignal:list, tension:list, size:int):
-    """
-    découpe la liste des tension reçues en morceau de tailles prédéfinis
-    la fonction ne fait pas des paquets parfait mais elle découpe la liste de la manière la plus optimale possible
-    elle fonction en utilisant l'effet de bord des listes
-    """
-    lenT = len(tension)
-    if lenT <= size:
-        dividedSignal.append(tension)
-    else:
-        lenT2 = lenT//2
-        decoupeListe(dividedSignal, tension[:lenT2], size)
-        decoupeListe(dividedSignal, tension[lenT2:], size)
-
-def voltageToBinary(tension:list, N_reception:int) -> str:
-    """
-    cette fonction normalise les valeurs de tensions reçues
-    on découpe la liste tension car des variations de luminosité ambiante rendraient la fonction inopérante
-    le principal défi est d'avoir des variations importantes dans chacun des morceaux sinon on perd de l'information
-    la taille des morceaux dépend de son nombre de bits et de la fréquence d'échantillonnage
-    """
-    signalBinMan = ''
-    dividedSignal = []
-    nb_bits = 4 # expérimentalement on ne voit jamais plus de 2 bits valant 0 ou 1 émis d'affilé
-    size = N_reception * 2 * nb_bits # car Manchester double la taille du message
-    decoupeListe(dividedSignal, tension, size)
-
-    for morceau in dividedSignal:
-        tensionMax = np.max(morceau)
-        tensionMin = np.min(morceau)
-
-        if tensionMax == 0 or (tensionMax - tensionMin) < 0.5:
-            print(f'Attention le morceau {morceau} dans voltageToBinary ne possède pas de variation de tension')
-            signalBinMan += '0'*len(morceau) # Arbitraire on aurait pu prendre 1
-        else:
-            morceau = morceau/tensionMax
-            min = tensionMin/tensionMax
-            milieu = (1 + min)/2
-            for i in range(len(morceau)):
-                if morceau[i] > milieu:
-                    signalBinMan += '1'
-                else:
-                    signalBinMan += '0'
-    return signalBinMan
 
 def decodageMan(signalBinMan:str) -> str:
     """
@@ -370,8 +302,6 @@ def demodulation(tension:list, N_reception:int, start:str, end:str, maxErreursAc
     tension = tension[0] #sys.entree me renvoie une liste avec un tableau unidimensionnel de tension à l'intérieur
     tension = np.round(tension, 2) # on arrondit les éléments pour la suite
 
-    signalBinMan = voltageToBinary(tension, N_reception)
-    signalBin = decodageMan(signalBinMan)
     messageBin = detectionAccroche(signalBin, start, end, maxErreursAccroche)
 
     return messageBin

@@ -61,7 +61,8 @@ def codageManchester(messageBin:str) -> str:
 
 def centreToBits(tensionMax:float, nombreSubdivisions:int):
     dictCentres = {}
-    centres = np.ones((2, nombreSubdivisions+1))*np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
+    line = np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
+    centres = np.array([line, line[::-1]])
 
     for k in range(nombreSubdivisions+1):
         dictCentres[codageBinaire(k, 2)] = centres[:, k]
@@ -245,8 +246,27 @@ def decodageASCII(messageBin:str) -> str:
         messageTransmis += chr(codageBaseDix(messageBin[posLettre:posLettre+8]))
     return messageTransmis
 
-def reception(tension:list, tensionMax:float, start:str, end:str, nombreSubdivisions:int, maxErreursAccroche:int) -> str:
-    signalBinMan = demodulation(tension, tensionMax, nombreSubdivisions)
+def reception(tensions:list, tensionMax:float, start:str, end:str, nombreSubdivisions:int, maxErreursAccroche:int) -> str:
+    signalBinMan = demodulation(tensions, tensionMax, nombreSubdivisions)
     signalBin = decodageMan(signalBinMan)
     messageBin = detectionAccroche(signalBin, start, end, maxErreursAccroche)
     return decodageASCII(messageBin)
+
+# Résultats
+
+def constellation(messageBin:str, tensionMax:float, nombreSubdivisions:int):
+    line = np.linspace(0, tensionMax, num=nombreSubdivisions+1, endpoint=True)
+    centres = np.array([line, line[::-1]])
+    plt.scatter(centres[0, :], centres[1, :], label="Points Codants", s=50)
+
+    dictCentres = centreToBits(tensionMax, nombreSubdivisions)
+    positionsMessage = np.zeros((2, len(messageBin)/2))
+    for indice in range(0, len(messageBin)-2, 2):
+        positionsMessage[:, indice] = dictCentres[messageBin[indice:indice+2]]
+    plt.scatter(positionsMessage[0, :], positionsMessage[1, :], s=25, color='red')
+
+    plt.xlabel("U_blue (V)")
+    plt.ylabel("U_red (V)")
+    plt.grid()
+    plt.legend()
+    plt.show()

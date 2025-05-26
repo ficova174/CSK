@@ -14,10 +14,12 @@ nombreSubdivisions = 3
 # message = input("Message à envoyer : ")
 message = 'jellooo'
 (start, end) = creationAccroches('a', 'z', 10)
-signal = emission(message, start, end, nombreSubdivisions, tensionMax, N)
+(startMan, endMan) = (codageManchester(start), codageManchester(end))
 
-sys.config_sortie(1, techantSortie*1e6, signal[0])
-sys.config_sortie(2, techantSortie*1e6, signal[1]) # en microsecondes et non périodique
+signal = emission(message, startMan, endMan, nombreSubdivisions, tensionMax, N)
+
+sys.config_sortie(1, techantSortie*1e6, signal[0, :])
+sys.config_sortie(2, techantSortie*1e6, signal[1, :]) # en microsecondes et non périodique
 
 # PARAMETRES RECEPTION
 
@@ -50,7 +52,7 @@ sys.fermer()
 t = [1]*len(signal)
 c=1
 for k in range(len(t)):
-    t[k] = techantSortie*c
+    t[k] = int(techantSortie*c)
     c += 1
 
 plt.figure()
@@ -63,7 +65,8 @@ plt.legend()
 # Ce que l'on reçoit
 
 plt.figure()
-plt.scatter(temps[0], tensions[0], label="EA2", s=1)
+plt.scatter(temps[0], tensions[0, :], label="EA2", s=1)
+plt.scatter(temps[0], tensions[1, :], label="EA3", s=1)
 plt.xlabel("t (s)")
 plt.ylabel("u (V)")
 plt.grid()

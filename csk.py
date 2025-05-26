@@ -9,6 +9,7 @@ from bitarray import bitarray
 matplotlib.use("Qt5Agg")
 ###########################################################################################################sys = pycan.Sysam("SP5")
 
+
 # Partie émission
 
 
@@ -28,6 +29,7 @@ def codageBinaire(nombre:int, taillePaquet:int) -> str:
 def encodage(message:str) -> str:
     """
     message texte (str) -> message en binaire (str)
+    on demande la taille des paquets car on utilisera cette fonction pour coder des strings de longueur variable (accroche et ID)
     """
     messageBin = ''
     for lettre in message:
@@ -35,11 +37,12 @@ def encodage(message:str) -> str:
         messageBin += codageBinaire(lettre, 8)
     return messageBin
 
-def creationAccroches(lettreStart:str, lettreEnd:str, nombreRepetitions:int) -> str:
+def creationAccroches(lettre1:str, lettre2:str, repetitions:int) -> tuple:
     """
-    on créée une succession improbable
+    on créée une succesion improbable
+    on lui donne un identifiant pour estimer le début du message (fonction detectionAccroche())
     """
-    return (encodage(lettreStart)*nombreRepetitions, encodage(lettreEnd)*nombreRepetitions)
+    return (encodage(lettre1)*repetitions, encodage(lettre2)*repetitions)
 
 # Codage Manchester (IEEE 802.3)
 def codageManchester(messageBin:str) -> str:
@@ -69,13 +72,13 @@ def centreToBits(tensionMax:float, nombreSubdivisions:int):
     
     return dictCentres
 
-def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
+def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> np.ndarray:
     """
     transforme le message en chromacité en valeurs de tension pour les LEDS
     on utilise la modulation color shifting keying (CSK)
     """
     dictCentres = centreToBits(tensionMax, nombreSubdivisions)
-    tensions = np.zeros((2, len(messageMan)/2)) # /2 pas de problème car Manchester double taille donc paire
+    tensions = np.zeros((2, int(len(messageMan)/2))) # /2 pas de problème car Manchester double taille donc paire
 
     indice = 0
     for k in range(0, len(messageMan)-2, 2):
@@ -84,15 +87,15 @@ def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
 
     return np.repeat(tensions, repeats=N, axis=1) # chaque colonne est dupliqué N fois
 
-def emission(message:str, start:str, end:str, nombreSubdivisions:int, tensionMax:int, N:int) -> list:
-    messageMan = codageManchester(start + encodage(message) + end) # accroches ajoutées au message
+def emission(message:str, startMan:str, endMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> np.ndarray:
+    messageMan = startMan + codageManchester(encodage(message)) + endMan
     return csk(messageMan, nombreSubdivisions, tensionMax, N)
 
 
 # Partie réception
 
 
-def calibragePhotodiodes(tensionMax:float) -> list:
+def calibragePhotodiodes(tensionMax:float) -> np.ndarray:
     """
     A chaque couleur primaire on attribue les valeurs des photodiodes
     """
@@ -145,87 +148,144 @@ def calibragePhotodiodes(tensionMax:float) -> list:
     # M = (tensionsReceptionMoy)^-1
     return np.linalg.inv(tensionsReceptionMoy)
 
-def pointsPlan(tensions:list, tension_to_RB:list) -> dict:
+def pointsPlan(tensions:np.ndarray, tension_to_RB:np.ndarray) -> np.ndarray:
     positions = np.zeros((2, len(tensions))) # positions x, y
     for indice in range(len(tensions)):
         positions[:, indice] = tension_to_RB @ tensions[:, indice]
     return positions
 
-def pointsToBits(pointsBits:list, dictCentres:list) -> str:
+def pointsToBits(pointsBits:np.ndarray, dictCentres:dict) -> str:
     signalBinMan = ''
     for indicePoint in range(pointsBits.shape[1]):
-        distance = float.inf
+        distance = float('inf')
         bits_temp = ''
         for bits in dictCentres:
             distance_temp = (pointsBits[0, indicePoint]-dictCentres[bits][0])**2 + (pointsBits[1, indicePoint]-dictCentres[bits][1])**2
             if distance_temp <= distance:
                 distance = distance_temp
                 bits_temp = bits
-        if distance == float.inf:
+        if distance == float('inf'):
             print("Erreur dans pointsToBits(), distance non calculée")
-        signalMan += bits_temp
+        signalBinMan += bits_temp
     return signalBinMan
 
-def demodulation(tensions:list, tensionMax:float, nombreSubdivisions:int) -> str:
+def chercheIndicesAccroche(signalBinMan:str, motif:str, maxErreursMotif:int) -> int:
+    """
+    on cherche l'accroche, or celle-ci n'a pas été transmise parfaitement
+    on doit alors accepter un certains nombre d'erreurs dans le motif de l'accroche (id pas de problème)
+    on utilise une méthode inspirée de la distance de Hamming pour connaitre ce nombre d'erreurs
+    on renvoie la liste des indices de début des motifs avec autant ou moins d'erreurs que maxErreurMotif
+    chaque bit est répété N_reception fois (la période d'échantillonage)
+    """
+    indiceAccroche = -1
+    motifBits = bitarray(motif)
+    compteur = 0
+    for indice in range(len(signalBinMan)-len(motif)):
+        signalBits = bitarray(signalBinMan[indice:indice+len(motif)])
+        nombreErreurs = (signalBits ^ motifBits).count() # ^ représente l'opérateur XOR
+        if nombreErreurs <= maxErreursMotif:
+            indiceAccroche = indice
+            compteur += 1
+    if compteur != 1:
+        print('Plus d\'une accroche trouvée')
+    if indiceAccroche == -1:
+        print('Pas d\'accroche trouvée')
+    return indiceAccroche
+
+def detectionAccroche(signalBinMan:str, startDoublonsMan:str, endDoublonsMan:str, maxErreursMotif:int) -> tuple:
+    startPos = chercheIndicesAccroche(signalBinMan, startDoublonsMan, maxErreursMotif)
+    endPos = chercheIndicesAccroche(signalBinMan, endDoublonsMan, maxErreursMotif)
+    
+    if endPos <= startPos:
+        print("Erreur dans la position des accroches trouvées")
+
+    return (startPos, endPos)
+
+def mostCommon(liste:list | str, type:str) -> (None | float | int | str):
+    """
+    trouve l'élément le plus commun d'une liste
+    on peut choisir le datatype renvoyé
+    """
+    if liste == []:
+        print('Erreur : la liste est vide')
+        return -1
+    
+    dict = {}
+    for element in liste:
+        if element not in dict:
+            dict[element] = 1
+        else:
+            dict[element] += 1
+    
+    elementMax = liste[0]
+    nbApparitionMax = 0
+    for element in dict:
+        if dict[element] > nbApparitionMax:
+            elementMax = element
+            nbApparitionMax = dict[element]
+    
+    if type == "float":
+        return elementMax
+    elif type == "int":
+        return int(elementMax)
+    elif type == "str":
+        return str(elementMax)
+    else:
+        print("Mauvais datatype sélectionné : choisir int, float ou str")
+
+def demodulation(tensions:np.ndarray, tensionMax:float, startMan:str, endMan:str, nombreSubdivisions:int, maxErreursMotif:int, N_reception:int) -> str:
     dictCentres = centreToBits(tensionMax, nombreSubdivisions)
     tension_to_RB = calibragePhotodiodes(tensionMax)
 
     pointsBits = pointsPlan(tensions, tension_to_RB)
-    signalBinMan = pointsToBits(pointsBits, dictCentres)
-    return signalBinMan
+    signalBinManDouble = pointsToBits(pointsBits, dictCentres)
 
-def decodageMan(signalBinMan:str) -> str:
+    startDoublonsMan = ""
+    endDoublonsMan = ""
+
+    for k in range(len(startMan)):
+        startDoublonsMan += N_reception * startMan[k]
+        endDoublonsMan += N_reception * endMan[k]
+
+    (startPos, endPos) = detectionAccroche(signalBinManDouble, startDoublonsMan, endDoublonsMan, maxErreursMotif) # chaque bit est répété N_reception fois par rapport au message Man envoyé
+
+    messageBinMan = '' # on enlève les doublons
+
+    valeursBit = [int(signalBinManDouble[startPos+len(startDoublonsMan)])]
+    indiceModulo = 1
+    for indice in range(startPos+len(startDoublonsMan), endPos-1): # -1 ???
+        if indiceModulo % N_reception == 0:
+            messageBinMan += mostCommon(valeursBit, 'str')
+            valeursBit = [int(signalBinManDouble[indice])]
+        else:
+            valeursBit.append(int(signalBinManDouble[indice]))
+        indiceModulo += 1
+    messageBinMan += mostCommon(valeursBit, 'str')
+
+    return messageBinMan
+
+def decodageMan(messageBinMan:str) -> str:
     """
     se référer à l'illustration sur Wikipedia de la page sur le codage Manchester (version anglophone)
+    et à l'utilisation de XOR
     """
-    signalBin = ''
-    for indice in range(len(signalBinMan-1)):
-        if signalBinMan[indice] == '0' and signalBinMan[indice+1] == '1':
-            signalBin += '1'
-        elif signalBinMan[indice] == '1' and signalBinMan[indice+1] == '0':
-            signalBin += '0'
+    horloge = [k%2 for k in range(1, len(messageBinMan)+1)] # On commence à 1 pour que l'horloge commence par 1
+    messageBinTemp = ''
+
+    for indice in range(len(messageBinMan)):
+        if horloge[indice] == messageBinMan[indice]:
+            messageBinTemp += '0'
         else:
-            print('Transition non définie dans decodageMan()')
-    return signalBin
-
-def chercheIndiceAccroche(signalBin:str, accroche:str, role:str, maxErreursAccroche:int) -> int:
-    """
-    lors de la transmission du message, des erreurs apparaissent causées par différents facteurs
-    pour trouver lorsque le message débute et finit on utilise des accroches,
-    on doit alors autoriser quelques erreurs sur ces accroches
-    """
-    if role != 'start' and role != 'end':
-        print('Erreur dans le rôle des accroches dans chercheIndiceAccroche()')
-        return []
-
-    indiceAccroche = float.inf
-    accrocheBits = bitarray(accroche)
-    indice = 0
-    while indiceAccroche == float.inf and indice <= len(signalBin)-len(accroche):
-        indice += 1
-        signalBits = bitarray(signalBin[indice:indice+len(accroche)])
-        nombreErreurs = (signalBits ^ accrocheBits).count() # ^ représente l'opérateur XOR
-        if nombreErreurs <= maxErreursAccroche and role == 'start':
-            indiceAccroche = indice+len(role)
-        elif nombreErreurs <= maxErreursAccroche and role == 'end':
-            indiceAccroche = indice
-
-    if indiceAccroche == float.inf:
-        print('Accroche non trouvée')
-
-    return indiceAccroche
-
-def detectionAccroche(signalBin:str, start:str, end:str, maxErreursAccroche:int) -> str:
-    """
-    slice le signal binaire pour ne garder que le message sans les accroches
-    """
-    start = chercheIndiceAccroche(signalBin, start, 'start', maxErreursAccroche)
-    end = chercheIndiceAccroche(signalBin, end, 'end', maxErreursAccroche)
+            messageBinTemp += '1'
     
-    if end <= start:
-        print("Erreur dans la position des accroches trouvées")
+    if type(int(len(messageBinTemp))/2) != int:
+        print('len(messageBinTemp) n\'est pas paire')
 
-    return signalBin[start:end]
+    messageBin = ''
+    for indice in range(0, len(messageBinTemp), 2): # Manchester double taille donc forcément paire
+        messageBin += messageBinTemp[indice]
+
+    return messageBin
 
 def codageBaseDix(byte:str) -> int:
     """
@@ -246,10 +306,9 @@ def decodageASCII(messageBin:str) -> str:
         messageTransmis += chr(codageBaseDix(messageBin[posLettre:posLettre+8]))
     return messageTransmis
 
-def reception(tensions:list, tensionMax:float, start:str, end:str, nombreSubdivisions:int, maxErreursAccroche:int) -> str:
-    signalBinMan = demodulation(tensions, tensionMax, nombreSubdivisions)
-    signalBin = decodageMan(signalBinMan)
-    messageBin = detectionAccroche(signalBin, start, end, maxErreursAccroche)
+def reception(tensions:np.ndarray, tensionMax:float, startMan:str, endMan:str, nombreSubdivisions:int, maxErreursAccroche:int, N_reception:int) -> str:
+    messageBinMan = demodulation(tensions, tensionMax, startMan, endMan, nombreSubdivisions, maxErreursAccroche, N_reception)
+    messageBin = decodageMan(messageBinMan)
     return decodageASCII(messageBin)
 
 # Résultats
@@ -260,7 +319,7 @@ def constellation(messageBin:str, tensionMax:float, nombreSubdivisions:int):
     plt.scatter(centres[0, :], centres[1, :], label="Points Codants", s=50)
 
     dictCentres = centreToBits(tensionMax, nombreSubdivisions)
-    positionsMessage = np.zeros((2, len(messageBin)/2))
+    positionsMessage = np.zeros((2, int(len(messageBin)/2)))
     for indice in range(0, len(messageBin)-2, 2):
         positionsMessage[:, indice] = dictCentres[messageBin[indice:indice+2]]
     plt.scatter(positionsMessage[0, :], positionsMessage[1, :], s=25, color='red')

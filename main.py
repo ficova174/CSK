@@ -1,8 +1,8 @@
 from csk import *
 import matplotlib.pyplot as plt
-# import pycanum.main as pycan
+import pycanum.main as pycan
 
-# sys = pycan.Sysam("SP5")
+sys = pycan.Sysam("SP5")
 
 # PARAMETRES EMISSION
 
@@ -18,8 +18,8 @@ message = 'jellooo'
 
 signal = emission(message, startMan, endMan, nombreSubdivisions, tensionMax, N)
 
-# sys.config_sortie(1, techantSortie*1e6, signal[0, :])
-# sys.config_sortie(2, techantSortie*1e6, signal[1, :]) # en microsecondes et non périodique
+sys.config_sortie(1, techantSortie*1e6, signal[0, :])
+sys.config_sortie(2, techantSortie*1e6, signal[1, :]) # en microsecondes et non périodique
 
 # PARAMETRES RECEPTION
 
@@ -29,56 +29,46 @@ tempsReception = 5 # en secondes
 nbpoints = int(tempsReception/techantEntree)
 N_reception = int(temissionBit/techantEntree) # IDEALEMENT IMPAIR POUR MOSTCOMMON()
 
-startDoublonsMan = ""
-endDoublonsMan = ""
-
-for k in range(0, len(test), 4):
-    valide += test[k:k+2]
-
-for k in range(0, len(startMan), 2):
-    startDoublonsMan += N_reception * startMan[k:k+2]
-    endDoublonsMan += N_reception * endMan[k:k+2]
-
-# sys.config_entrees([2, 3], [10]) # attention 10 V max
-# sys.config_echantillon(techantEntree*1e6, nbpoints) # période d'échantillonnage en microsecondes
-# sys.config_quantification(12)
+sys.config_entrees([2, 3], [10]) # attention 10 V max
+sys.config_echantillon(techantEntree*1e6, nbpoints) # période d'échantillonnage en microsecondes
+sys.config_quantification(12)
 
 
 # Emission/acquisition
 
-# sys.acquerir()
-# sys.declencher_sorties(1, 1)
-# sys.stopper_sorties(1, 1)
+sys.acquerir()
+sys.declencher_sorties(1, 1)
+sys.stopper_sorties(1, 1)
 
 # Ce que l'on reçoit
-# temps = sys.temps()
-# tensions = sys.entrees()
-# sys.fermer()
+temps = sys.temps()
+tensions = sys.entrees()
+sys.fermer()
 
 # Résultats
 
 # Ce qu'on envoie aux LEDs
 
-# t = [1]*len(signal)
-# c=1
-# for k in range(len(t)):
-#     t[k] = int(techantSortie*c)
-#     c += 1
+t = [1]*len(signal)
+c=1
+for k in range(len(t)):
+    t[k] = int(techantSortie*c)
+    c += 1
 
-# plt.figure()
-# plt.scatter(t, signal, label="SA1", s=1)
-# plt.xlabel("t (s)")
-# plt.ylabel("u (V)")
-# plt.grid()
-# plt.legend()
+plt.figure()
+plt.scatter(t, signal, label="SA1", s=1)
+plt.xlabel("t (s)")
+plt.ylabel("u (V)")
+plt.grid()
+plt.legend()
 
-# # Ce que l'on reçoit
+# Ce que l'on reçoit
 
-# plt.figure()
-# plt.scatter(temps[0], tensions[0, :], label="EA2", s=1)
-# plt.scatter(temps[0], tensions[1, :], label="EA3", s=1)
-# plt.xlabel("t (s)")
-# plt.ylabel("u (V)")
-# plt.grid()
-# plt.legend()
-# plt.show()
+plt.figure()
+plt.scatter(temps[0], tensions[0, :], label="EA2", s=1)
+plt.scatter(temps[0], tensions[1, :], label="EA3", s=1)
+plt.xlabel("t (s)")
+plt.ylabel("u (V)")
+plt.grid()
+plt.legend()
+plt.show()

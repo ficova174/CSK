@@ -1,12 +1,10 @@
 #!/home/ficova/TIPE/CSK/.venv/bin/python
 
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
-import pycanum.main as pycan
+# import pycanum.main as pycan
 from bitarray import bitarray
 
-matplotlib.use("Qt5Agg")
 ###########################################################################################################sys = pycan.Sysam("SP5")
 
 
@@ -29,7 +27,6 @@ def codageBinaire(nombre:int, taillePaquet:int) -> str:
 def encodage(message:str) -> str:
     """
     message texte (str) -> message en binaire (str)
-    on demande la taille des paquets car on utilisera cette fonction pour coder des strings de longueur variable (accroche et ID)
     """
     messageBin = ''
     for lettre in message:
@@ -40,7 +37,6 @@ def encodage(message:str) -> str:
 def creationAccroches(lettre1:str, lettre2:str, repetitions:int) -> tuple:
     """
     on créée une succesion improbable
-    on lui donne un identifiant pour estimer le début du message (fonction detectionAccroche())
     """
     return (encodage(lettre1)*repetitions, encodage(lettre2)*repetitions)
 
@@ -81,7 +77,7 @@ def csk(messageMan:str, nombreSubdivisions:int, tensionMax:int, N:int) -> np.nda
     tensions = np.zeros((2, int(len(messageMan)/2))) # /2 pas de problème car Manchester double taille donc paire
 
     indice = 0
-    for k in range(0, len(messageMan)-2, 2):
+    for k in range(0, len(messageMan), 2):
         tensions[:, indice] = dictCentres[messageMan[k:k+2]]
         indice += 1
 
@@ -149,8 +145,8 @@ def calibragePhotodiodes(tensionMax:float) -> np.ndarray:
     return np.linalg.inv(tensionsReceptionMoy)
 
 def pointsPlan(tensions:np.ndarray, tension_to_RB:np.ndarray) -> np.ndarray:
-    positions = np.zeros((2, len(tensions))) # positions x, y
-    for indice in range(len(tensions)):
+    positions = np.zeros((2, tensions.shape[1])) # positions x, y
+    for indice in range(tensions.shape[1]):
         positions[:, indice] = tension_to_RB @ tensions[:, indice]
     return positions
 
@@ -169,7 +165,7 @@ def pointsToBits(pointsBits:np.ndarray, dictCentres:dict) -> str:
         signalBinMan += bits_temp
     return signalBinMan
 
-def chercheIndicesAccroche(signalBinMan:str, motif:str, maxErreursMotif:int) -> int:
+def chercheIndicesAccroche(signalBinMan:str, role:str, motif:str, maxErreursMotif:int) -> int:
     """
     on cherche l'accroche, or celle-ci n'a pas été transmise parfaitement
     on doit alors accepter un certains nombre d'erreurs dans le motif de l'accroche (id pas de problème)
@@ -177,24 +173,31 @@ def chercheIndicesAccroche(signalBinMan:str, motif:str, maxErreursMotif:int) -> 
     on renvoie la liste des indices de début des motifs avec autant ou moins d'erreurs que maxErreurMotif
     chaque bit est répété N_reception fois (la période d'échantillonage)
     """
-    indiceAccroche = -1
+    indiceAccroche = []
     motifBits = bitarray(motif)
-    compteur = 0
     for indice in range(len(signalBinMan)-len(motif)):
         signalBits = bitarray(signalBinMan[indice:indice+len(motif)])
         nombreErreurs = (signalBits ^ motifBits).count() # ^ représente l'opérateur XOR
         if nombreErreurs <= maxErreursMotif:
-            indiceAccroche = indice
-            compteur += 1
-    if compteur != 1:
-        print('Plus d\'une accroche trouvée')
-    if indiceAccroche == -1:
-        print('Pas d\'accroche trouvée')
+            indiceAccroche.append(indice)
+    if len(indiceAccroche) != 1:
+        print('Plus ou aucune accroche trouvée')
+        print(indiceAccroche)
+        return -1
+    
+    if role == 'start':
+        indiceAccroche = indiceAccroche[-1]
+    elif role == 'end':
+        indiceAccroche = indiceAccroche[0]
+    else:
+        print('Mauvais rôle d\'accroche sélectionné')
+        return -1
+
     return indiceAccroche
 
 def detectionAccroche(signalBinMan:str, startDoublonsMan:str, endDoublonsMan:str, maxErreursMotif:int) -> tuple:
-    startPos = chercheIndicesAccroche(signalBinMan, startDoublonsMan, maxErreursMotif)
-    endPos = chercheIndicesAccroche(signalBinMan, endDoublonsMan, maxErreursMotif)
+    startPos = chercheIndicesAccroche(signalBinMan, 'start', startDoublonsMan, maxErreursMotif)
+    endPos = chercheIndicesAccroche(signalBinMan, 'end', endDoublonsMan, maxErreursMotif)
     
     if endPos <= startPos:
         print("Erreur dans la position des accroches trouvées")
@@ -243,22 +246,22 @@ def demodulation(tensions:np.ndarray, tensionMax:float, startMan:str, endMan:str
     startDoublonsMan = ""
     endDoublonsMan = ""
 
-    for k in range(len(startMan)):
-        startDoublonsMan += N_reception * startMan[k]
-        endDoublonsMan += N_reception * endMan[k]
+    for k in range(0, len(startMan), 2):
+        startDoublonsMan += N_reception * startMan[k:k+2]
+        endDoublonsMan += N_reception * endMan[k:k+2]
 
     (startPos, endPos) = detectionAccroche(signalBinManDouble, startDoublonsMan, endDoublonsMan, maxErreursMotif) # chaque bit est répété N_reception fois par rapport au message Man envoyé
 
     messageBinMan = '' # on enlève les doublons
 
-    valeursBit = [int(signalBinManDouble[startPos+len(startDoublonsMan)])]
+    valeursBit = [int(signalBinManDouble[startPos+len(startDoublonsMan):startPos+len(startDoublonsMan)+1])]
     indiceModulo = 1
-    for indice in range(startPos+len(startDoublonsMan), endPos-1): # -1 ???
+    for indice in range(startPos+len(startDoublonsMan), endPos-1, 2): # -1 ???
         if indiceModulo % N_reception == 0:
             messageBinMan += mostCommon(valeursBit, 'str')
-            valeursBit = [int(signalBinManDouble[indice])]
+            valeursBit = [int(signalBinManDouble[indice:indice+2])]
         else:
-            valeursBit.append(int(signalBinManDouble[indice]))
+            valeursBit.append(int(signalBinManDouble[indice:indice+2]))
         indiceModulo += 1
     messageBinMan += mostCommon(valeursBit, 'str')
 
@@ -278,7 +281,7 @@ def decodageMan(messageBinMan:str) -> str:
         else:
             messageBinTemp += '1'
     
-    if type(int(len(messageBinTemp))/2) != int:
+    if len(messageBinMan) % 2 != 0:
         print('len(messageBinTemp) n\'est pas paire')
 
     messageBin = ''
